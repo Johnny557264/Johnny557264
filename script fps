@@ -1,0 +1,406 @@
+--[[ 
+    LocalScript : FPS / RAM Booster + UI + Theme System + FPS Counter + Drag + Hide/Show
+    วางใน StarterPlayer > StarterPlayerScripts (เกมของคุณเองใน Roblox Studio)
+]]
+
+local Players        = game:GetService("Players")
+local RunService     = game:GetService("RunService")
+local Lighting       = game:GetService("Lighting")
+local Workspace      = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+
+local player         = Players.LocalPlayer
+local playerGui      = player:WaitForChild("PlayerGui")
+
+---------------------------------------------------------------------
+-- ฟังก์ชันทำให้ GUI ลากได้ (มือถือ/PC)
+---------------------------------------------------------------------
+local function makeDraggable(guiObject)
+    local dragging = false
+    local dragStart, startPos
+
+    guiObject.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = guiObject.Position
+        end
+    end)
+
+    guiObject.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            guiObject.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+end
+
+---------------------------------------------------------------------
+-- สถานะระบบ Boost + Theme
+---------------------------------------------------------------------
+local MODE_EXTREME = "Extreme"   -- ประหยัดสุด ๆ
+local MODE_MEDIUM  = "Medium"    -- กลาง ๆ
+
+local FPSBoostEnabled = true
+local FPSBoostMode    = MODE_EXTREME
+
+-- Theme ต่าง ๆ
+local THEME_RAINBOW = "Rainbow"
+local THEME_DARK    = "Dark"
+local THEME_LIGHT   = "Light"
+local THEME_NEON    = "Neon"
+local THEME_STATIC  = "Static"
+
+local currentTheme  = THEME_RAINBOW
+local staticColor   = Color3.fromRGB(0, 170, 255) -- สีประจำ Static
+
+---------------------------------------------------------------------
+-- ฟังก์ชันลดงาน Lighting
+---------------------------------------------------------------------
+local function optimizeLighting()
+    if not FPSBoostEnabled then return end
+
+    if FPSBoostMode == MODE_EXTREME then
+        pcall(function()
+            Lighting.GlobalShadows = false
+            Lighting.EnvironmentDiffuseScale  = 0
+            Lighting.EnvironmentSpecularScale = 0
+            Lighting.Brightness = 1
+        end)
+    elseif FPSBoostMode == MODE_MEDIUM then
+        pcall(function()
+            Lighting.GlobalShadows = false
+            Lighting.EnvironmentDiffuseScale  = 0.2
+            Lighting.EnvironmentSpecularScale = 0.1
+            Lighting.Brightness = 1.5
+        end)
+    end
+end
+
+---------------------------------------------------------------------
+-- ฟังก์ชันปิด Effect / ลบ Texture ตามโหมด
+---------------------------------------------------------------------
+local function handleInstance(obj)
+    if not FPSBoostEnabled then return end
+
+    -- ปิดเอฟเฟกต์กินเครื่อง
+    if obj:IsA("ParticleEmitter")
+    or obj:IsA("Trail")
+    or obj:IsA("Beam")
+    or obj:IsA("Smoke")
+    or obj:IsA("Fire")
+    or obj:IsA("Sparkles") then
+        obj.Enabled = false
+
+    elseif FPSBoostMode == MODE_EXTREME then
+        -- ลบ Texture / Decal / SurfaceAppearance ในโหมดประหยัดสุด ๆ
+        if obj:IsA("Decal")
+        or obj:IsA("Texture")
+        or obj:IsA("SurfaceAppearance") then
+            obj:Destroy()
+        end
+    end
+
+    if obj:IsA("Explosion") then
+        obj.Visible = false
+    end
+end
+
+---------------------------------------------------------------------
+-- สแกนทั้งแมพครั้งแรก
+---------------------------------------------------------------------
+local function fullScan()
+    if not FPSBoostEnabled then return end
+
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        handleInstance(obj)
+    end
+
+    for _, obj in ipairs(Lighting:GetDescendants()) do
+        handleInstance(obj)
+    end
+end
+
+-- ดูของใหม่ที่สร้างในภายหลัง
+Workspace.DescendantAdded:Connect(handleInstance)
+Lighting.DescendantAdded:Connect(handleInstance)
+
+---------------------------------------------------------------------
+-- สร้าง UI
+---------------------------------------------------------------------
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "FPSBoostUI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+
+-- กล่องเมนูซ้ายบน
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 220, 0, 110)
+frame.Position = UDim2.new(0, 10, 0, 10)
+frame.BackgroundTransparency = 0.2
+frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+frame.BorderSizePixel = 0
+frame.Parent = screenGui
+
+local uiCorner = Instance.new("UICorner")
+uiCorner.CornerRadius = UDim.new(0, 8)
+uiCorner.Parent = frame
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -10, 0, 20)
+title.Position = UDim2.new(0, 5, 0, 5)
+title.BackgroundTransparency = 1
+title.Text = "FPS Booster"
+title.Font = Enum.Font.GothamBold
+title.TextSize = 16
+title.TextColor3 = Color3.new(1, 1, 1)
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = frame
+
+-- ปุ่มเปิด/ปิด Boost
+local toggleButton = Instance.new("TextButton")
+toggleButton.Size = UDim2.new(0.5, -15, 0, 30)
+toggleButton.Position = UDim2.new(0, 10, 0, 35)
+toggleButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+toggleButton.BorderSizePixel = 0
+toggleButton.TextColor3 = Color3.new(1, 1, 1)
+toggleButton.Font = Enum.Font.Gotham
+toggleButton.TextSize = 14
+toggleButton.Parent = frame
+
+local toggleCorner = Instance.new("UICorner")
+toggleCorner.CornerRadius = UDim.new(0, 6)
+toggleCorner.Parent = toggleButton
+
+-- ปุ่มเปลี่ยนโหมด Boost (Extreme / Medium)
+local modeButton = Instance.new("TextButton")
+modeButton.Size = UDim2.new(0.5, -15, 0, 30)
+modeButton.Position = UDim2.new(0.5, 5, 0, 35)
+modeButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+modeButton.BorderSizePixel = 0
+modeButton.TextColor3 = Color3.new(1, 1, 1)
+modeButton.Font = Enum.Font.Gotham
+modeButton.TextSize = 14
+modeButton.Parent = frame
+
+local modeCorner = Instance.new("UICorner")
+modeCorner.CornerRadius = UDim.new(0, 6)
+modeCorner.Parent = modeButton
+
+-- ปุ่มเปลี่ยน Theme
+local themeButton = Instance.new("TextButton")
+themeButton.Size = UDim2.new(1, -20, 0, 30)
+themeButton.Position = UDim2.new(0, 10, 0, 70)
+themeButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+themeButton.BorderSizePixel = 0
+themeButton.TextColor3 = Color3.new(1, 1, 1)
+themeButton.Font = Enum.Font.Gotham
+themeButton.TextSize = 14
+themeButton.Parent = frame
+
+local themeCorner = Instance.new("UICorner")
+themeCorner.CornerRadius = UDim.new(0, 6)
+themeCorner.Parent = themeButton
+
+-- Label FPS มุมขวาบน
+local fpsLabel = Instance.new("TextLabel")
+fpsLabel.Size = UDim2.new(0, 120, 0, 25)
+fpsLabel.AnchorPoint = Vector2.new(1, 0)
+fpsLabel.Position = UDim2.new(1, -10, 0, 10)
+fpsLabel.BackgroundTransparency = 0.2
+fpsLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+fpsLabel.BorderSizePixel = 0
+fpsLabel.Font = Enum.Font.GothamBold
+fpsLabel.TextSize = 14
+fpsLabel.TextColor3 = Color3.new(1, 1, 1)
+fpsLabel.Text = "FPS: ..."
+fpsLabel.Parent = screenGui
+
+local fpsCorner = Instance.new("UICorner")
+fpsCorner.CornerRadius = UDim.new(0, 8)
+fpsCorner.Parent = fpsLabel
+
+-- ปุ่มเล็ก ๆ ซ่อน/โชว์ UI
+local uiToggleButton = Instance.new("TextButton")
+uiToggleButton.Size = UDim2.new(0, 40, 0, 40)
+uiToggleButton.AnchorPoint = Vector2.new(1, 0)
+uiToggleButton.Position = UDim2.new(1, -10, 0, 50)
+uiToggleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+uiToggleButton.BackgroundTransparency = 0.2
+uiToggleButton.BorderSizePixel = 0
+uiToggleButton.TextColor3 = Color3.new(1, 1, 1)
+uiToggleButton.Font = Enum.Font.GothamBold
+uiToggleButton.TextSize = 18
+uiToggleButton.Text = "UI"
+uiToggleButton.Parent = screenGui
+
+local uiToggleCorner = Instance.new("UICorner")
+uiToggleCorner.CornerRadius = UDim.new(1, 0)
+uiToggleCorner.Parent = uiToggleButton
+
+-- ทำให้ลากได้
+makeDraggable(frame)
+makeDraggable(fpsLabel)
+makeDraggable(uiToggleButton)
+
+---------------------------------------------------------------------
+-- ซ่อน/โชว์ UI หลัก
+---------------------------------------------------------------------
+local uiVisible = true
+
+local function setUIVisible(state)
+    uiVisible = state
+    frame.Visible = state
+    fpsLabel.Visible = state
+end
+
+uiToggleButton.MouseButton1Click:Connect(function()
+    setUIVisible(not uiVisible)
+end)
+
+---------------------------------------------------------------------
+-- อัปเดตข้อความปุ่ม Boost / Mode / Theme
+---------------------------------------------------------------------
+local function refreshButtonsText()
+    toggleButton.Text = FPSBoostEnabled and "ปิด Boost" or "เปิด Boost"
+
+    if FPSBoostMode == MODE_EXTREME then
+        modeButton.Text = "โหมด Boost: ประหยัดสุด ๆ"
+    else
+        modeButton.Text = "โหมด Boost: กลาง ๆ"
+    end
+
+    themeButton.Text = "Theme: " .. currentTheme
+end
+
+toggleButton.MouseButton1Click:Connect(function()
+    FPSBoostEnabled = not FPSBoostEnabled
+    refreshButtonsText()
+    if FPSBoostEnabled then
+        optimizeLighting()
+        fullScan()
+    end
+end)
+
+modeButton.MouseButton1Click:Connect(function()
+    if FPSBoostMode == MODE_EXTREME then
+        FPSBoostMode = MODE_MEDIUM
+    else
+        FPSBoostMode = MODE_EXTREME
+    end
+
+    refreshButtonsText()
+    if FPSBoostEnabled then
+        optimizeLighting()
+        fullScan()
+    end
+end)
+
+-- สลับ Theme
+local themeOrder = {
+    THEME_RAINBOW,
+    THEME_DARK,
+    THEME_LIGHT,
+    THEME_NEON,
+    THEME_STATIC,
+}
+local function cycleTheme()
+    local index
+    for i, v in ipairs(themeOrder) do
+        if v == currentTheme then
+            index = i
+            break
+        end
+    end
+    index = (index % #themeOrder) + 1
+    currentTheme = themeOrder[index]
+    refreshButtonsText()
+end
+
+themeButton.MouseButton1Click:Connect(function()
+    cycleTheme()
+end)
+
+---------------------------------------------------------------------
+-- FPS Counter + Theme Updater (RenderStepped)
+---------------------------------------------------------------------
+local fpsSmoothing = 0
+local alpha = 0.1
+local rainbowHue = 0
+local rainbowSpeed = 0.2 -- ยิ่งเยอะยิ่งวิ่งเร็ว
+
+RunService.RenderStepped:Connect(function(dt)
+    -- FPS Counter
+    local currentFPS = 1 / math.max(dt, 1/240)
+    if fpsSmoothing == 0 then
+        fpsSmoothing = currentFPS
+    else
+        fpsSmoothing = fpsSmoothing + (currentFPS - fpsSmoothing) * alpha
+    end
+    if fpsLabel.Visible then
+        fpsLabel.Text = string.format("FPS: %d", math.floor(fpsSmoothing + 0.5))
+    end
+
+    -- Theme Update
+    local baseColor
+    local textColor = Color3.new(1, 1, 1)
+
+    if currentTheme == THEME_RAINBOW then
+        rainbowHue = (rainbowHue + dt * rainbowSpeed) % 1
+        baseColor = Color3.fromHSV(rainbowHue, 1, 1)
+        textColor = Color3.new(1, 1, 1)
+
+    elseif currentTheme == THEME_DARK then
+        baseColor = Color3.fromRGB(25, 25, 25)
+        textColor = Color3.new(1, 1, 1)
+
+    elseif currentTheme == THEME_LIGHT then
+        baseColor = Color3.fromRGB(230, 230, 230)
+        textColor = Color3.new(0, 0, 0)
+
+    elseif currentTheme == THEME_NEON then
+        baseColor = Color3.fromRGB(0, 255, 170)
+        textColor = Color3.new(0, 0, 0)
+
+    elseif currentTheme == THEME_STATIC then
+        baseColor = staticColor
+        textColor = Color3.new(1, 1, 1)
+    end
+
+    -- เอาสี Theme ใส่ UI
+    frame.BackgroundColor3       = baseColor
+    toggleButton.BackgroundColor3= baseColor
+    modeButton.BackgroundColor3  = baseColor
+    themeButton.BackgroundColor3 = baseColor
+    fpsLabel.BackgroundColor3    = baseColor
+    uiToggleButton.BackgroundColor3 = baseColor
+
+    title.TextColor3         = textColor
+    toggleButton.TextColor3  = textColor
+    modeButton.TextColor3    = textColor
+    themeButton.TextColor3   = textColor
+    fpsLabel.TextColor3      = textColor
+    uiToggleButton.TextColor3= textColor
+end)
+
+---------------------------------------------------------------------
+-- เริ่มต้น
+---------------------------------------------------------------------
+refreshButtonsText()
+optimizeLighting()
+fullScan()
+print("[FPS Booster] Loaded. Mode:", FPSBoostMode, "Theme:", currentTheme)
